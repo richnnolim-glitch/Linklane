@@ -23,7 +23,7 @@ Tauri packages Windows installers (NSIS and MSI) when built on Windows, and Linu
 
 ## Android
 
-Open `android/` in Android Studio with JDK 17 and Android SDK 35 installed. Sync Gradle and run the `app` configuration on an Android device. The Android app uses an Android foreground service for discovery and transfers.
+From the repository root, run `npm install` with Node.js 20+. Open `android/` in Android Studio with JDK 17 and Android SDK 35 installed. Sync Gradle and run the `app` configuration on an Android device. The Gradle `preBuild` task runs `npm run lan:android-build` and embeds the React UI into the APK. The Android app uses a native JavaScript bridge and foreground service for LAN discovery and transfers.
 
 ## Current shared transport framing
 
