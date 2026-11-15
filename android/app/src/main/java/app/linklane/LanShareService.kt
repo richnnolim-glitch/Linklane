@@ -21,6 +21,8 @@ import java.io.DataOutputStream
 import java.net.DatagramPacket
 import java.net.DatagramSocket
 import java.net.InetAddress
+import java.net.Inet4Address
+import java.net.NetworkInterface
 import java.net.InetSocketAddress
 import java.net.ServerSocket
 import java.net.Socket
@@ -209,9 +211,30 @@ class LanShareService : Service() {
         }
     }
 
+
+    private fun findWifiAddress(): InetAddress? {
+        val interfaces = NetworkInterface.getNetworkInterfaces() ?: return null
+        val found = mutableListOf<Pair<String, InetAddress>>()
+        while (interfaces.hasMoreElements()) {
+            val network = interfaces.nextElement()
+            if (!network.isUp || network.isLoopback) continue
+            val addresses = network.inetAddresses
+            while (addresses.hasMoreElements()) {
+                val address = addresses.nextElement()
+                if (address is Inet4Address && !address.isLoopbackAddress && !address.isLinkLocalAddress) {
+                    found += network.name to address
+                }
+            }
+        }
+        return found.firstOrNull { (name, _) ->
+            name.startsWith("wlan") || name.startsWith("ap") || name.contains("wifi", ignoreCase = true)
+        }?.second ?: found.firstOrNull()?.second
+    }
+
     private fun runServer() {
         try {
-            ServerSocket(DEFAULT_TCP_PORT, 32, InetAddress.getByName("0.0.0.0")).use { listener ->
+            val bindAddress = findWifiAddress() ?: throw java.io.IOException("No active Wi-Fi interface address")
+            ServerSocket(DEFAULT_TCP_PORT, 32, bindAddress).use { listener ->
                 server = listener
                 port = listener.localPort
                 registerService()
