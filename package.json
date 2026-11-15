@@ -22,7 +22,8 @@
     "lan:dev": "vite --config vite.lan.config.ts --host 127.0.0.1 --port 1420",
     "lan:build": "vite build --config vite.lan.config.ts",
     "desktop:dev": "npx --yes @tauri-apps/cli@2 dev --config src-tauri/tauri.conf.json",
-    "desktop:build": "npx --yes @tauri-apps/cli@2 build --config src-tauri/tauri.conf.json"
+    "desktop:build": "npx --yes @tauri-apps/cli@2 build --config src-tauri/tauri.conf.json",
+    "lan:android-build": "vite build --config vite.android.config.ts"
   },
   "dependencies": {
     "@electric-sql/pglite": "^0.5.4",
