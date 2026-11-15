@@ -210,7 +210,7 @@ fn start_discovery(app: AppHandle, state: Arc<LanState>) {
                             if packet["id"].as_str() != Some(state.device_id.as_str()) {
                                 let advert = serde_json::json!({
                                     "type":"advertise","version":1,"id":state.device_id,
-                                    "name":state.device_name,"device":"desktop","port":TCP_PORT
+                                    "name":state.device_name,"device":std::env::consts::OS,"port":TCP_PORT
                                 }).to_string();
                                 let _ = socket.send_to(advert.as_bytes(), source);
                             }
@@ -303,8 +303,20 @@ fn main() {
     tauri::Builder::default()
         .plugin(tauri_plugin_dialog::init())
         .setup(|app| {
+            let data_dir = app.path().app_data_dir()?;
+            fs::create_dir_all(&data_dir)?;
+            let id_file = data_dir.join("device-id");
+            let device_id = fs::read_to_string(&id_file)
+                .ok()
+                .map(|value| value.trim().to_string())
+                .filter(|value| value.len() >= 8 && value.len() <= 64)
+                .unwrap_or_else(|| {
+                    let value = Uuid::new_v4().to_string();
+                    let _ = fs::write(&id_file, &value);
+                    value
+                });
             let state = Arc::new(LanState {
-                device_id: Uuid::new_v4().to_string(),
+                device_id,
                 device_name: "Linklane desktop".into(),
                 ..Default::default()
             });
