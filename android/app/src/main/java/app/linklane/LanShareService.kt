@@ -141,8 +141,9 @@ class LanShareService : Service() {
                             val id = serviceInfo.attributes["id"]?.toString(Charsets.UTF_8) ?: return
                             if (id == deviceId || !id.matches(Regex("[a-zA-Z0-9-]{8,64}"))) return
                             val kind = serviceInfo.attributes["device"]?.toString(Charsets.UTF_8) ?: "other"
-                            val peer = Peer(id, serviceInfo.serviceName.removePrefix("Linklane-"), kind,
-                                serviceInfo.host, serviceInfo.port)
+                            val name = serviceInfo.attributes["name"]?.toString(Charsets.UTF_8)
+                                ?.take(40)?.ifBlank { null } ?: "Nearby device"
+                            val peer = Peer(id, name, kind, serviceInfo.host, serviceInfo.port)
                             peers[id] = peer
                             sendBroadcast(Intent(ACTION_PEER).setPackage(packageName).putExtra(EXTRA_PEER, peer.id)
                                 .putExtra(EXTRA_NAME, peer.name).putExtra("address", peer.address))
