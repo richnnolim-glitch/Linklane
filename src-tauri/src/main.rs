@@ -176,7 +176,7 @@ fn start_discovery(app: AppHandle, state: Arc<LanState>) {
         }).map(|a| a.ip().to_string()).unwrap_or_else(|_| "127.0.0.1".into());
         let service = match ServiceInfo::new(
             SERVICE_TYPE, &format!("Linklane-{}", &state.device_id[..8]), &host,
-            &local_ip, TCP_PORT, &[("v", "1"), ("id", &state.device_id), ("device", "desktop")]
+            &local_ip, TCP_PORT, &[("v", "1"), ("id", &state.device_id), ("name", &state.device_name), ("device", std::env::consts::OS)]
         ) {
             Ok(v) => v,
             Err(e) => { emit_status(&app, &format!("Could not advertise Linklane: {e}")); return; }
