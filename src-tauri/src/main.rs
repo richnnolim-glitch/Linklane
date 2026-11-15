@@ -162,9 +162,13 @@ fn start_discovery(app: AppHandle, state: Arc<LanState>) {
             Err(e) => { emit_status(&app, &format!("mDNS unavailable: {e}")); return; }
         };
         let host = format!("linklane-{}.local.", &state.device_id[..8]);
+        let local_ip = UdpSocket::bind("0.0.0.0:0").and_then(|s| {
+            s.connect("192.0.2.1:9")?;
+            s.local_addr()
+        }).map(|a| a.ip().to_string()).unwrap_or_else(|_| "127.0.0.1".into());
         let service = match ServiceInfo::new(
             SERVICE_TYPE, &format!("Linklane-{}", &state.device_id[..8]), &host,
-            "0.0.0.0", TCP_PORT, &[("v", "2"), ("id", &state.device_id), ("device", "desktop")]
+            &local_ip, TCP_PORT, &[("v", "1"), ("id", &state.device_id), ("device", "desktop")]
         ) {
             Ok(v) => v,
             Err(e) => { emit_status(&app, &format!("Could not advertise Linklane: {e}")); return; }
@@ -175,7 +179,7 @@ fn start_discovery(app: AppHandle, state: Arc<LanState>) {
             Err(e) => { emit_status(&app, &format!("mDNS browse failed: {e}")); return; }
         };
         let udp = UdpSocket::bind(("0.0.0.0", UDP_PORT)).ok();
-        if let Some(socket) = &udp { let _ = socket.set_broadcast(true); let _ = socket.set_read_timeout(Some(Duration::from_millis(700))); }
+        if let Some(socket) = &udp { let _ = socket.set_broadcast(true); let _ = socket.set_read_timeout(Some(Duration::from_millis(500))); }
         loop {
             match receiver.recv_timeout(Duration::from_millis(500)) {
                 Ok(ServiceEvent::ServiceResolved(info)) => {
@@ -196,9 +200,36 @@ fn start_discovery(app: AppHandle, state: Arc<LanState>) {
                 _ => {}
             }
             if let Some(socket) = &udp {
-                let request = serde_json::json!({"type":"discover","version":2,"id":state.device_id});
+                let request = serde_json::json!({"type":"discover","version":1,"id":state.device_id});
                 let bytes = request.to_string();
                 let _ = socket.send_to(bytes.as_bytes(), "255.255.255.255:45821");
+                let mut buffer = [0u8; 1024];
+                if let Ok((n, source)) = socket.recv_from(&mut buffer) {
+                    if let Ok(packet) = serde_json::from_slice::<serde_json::Value>(&buffer[..n]) {
+                        if packet["version"].as_u64() == Some(1) && packet["type"] == "discover" {
+                            if packet["id"].as_str() != Some(&state.device_id) {
+                                let advert = serde_json::json!({
+                                    "type":"advertise","version":1,"id":state.device_id,
+                                    "name":state.device_name,"device":"desktop","port":TCP_PORT
+                                }).to_string();
+                                let _ = socket.send_to(advert.as_bytes(), source);
+                            }
+                        } else if packet["version"].as_u64() == Some(1) && packet["type"] == "advertise" {
+                            let id = packet["id"].as_str().unwrap_or("");
+                            let name = packet["name"].as_str().unwrap_or("Nearby device");
+                            let port = packet["port"].as_u64().unwrap_or(0) as u16;
+                            if id != state.device_id && id.len() >= 8 && id.len() <= 64 && port > 0 && !name.is_empty() {
+                                let peer = Peer {
+                                    id: id.to_string(), name: name.chars().take(40).collect(),
+                                    device: packet["device"].as_str().unwrap_or("other").to_string(),
+                                    address: source.ip().to_string(), port
+                                };
+                                if let Ok(mut peers) = state.peers.lock() { peers.insert(id.to_string(), peer.clone()); }
+                                let _ = app.emit("linklane://peer", peer);
+                            }
+                        }
+                    }
+                }
             }
         }
     });
