@@ -1,0 +1,67 @@
+@import "tailwindcss";
+
+@theme {
+  --font-sans: "Outfit", ui-sans-serif, system-ui, sans-serif;
+  --font-serif: "Fraunces", ui-serif, Georgia, "Times New Roman", serif;
+  --color-paper: #f3efe6;
+  --color-ink: #1a1814;
+  --color-muted: #5e574e;
+  --color-line: #e3dcd0;
+  --color-card: #fffdf8;
+  --color-ember: #c2410c;
+  --color-ember-deep: #9a3412;
+  --color-on-ember: #fff7f2;
+  --radius: 1.25rem;
+}
+
+@layer base {
+  html,
+  body {
+    background: var(--color-paper);
+    color: var(--color-ink);
+  }
+
+  button:not(:disabled),
+  [role="button"]:not(:disabled) {
+    cursor: pointer;
+  }
+
+  body {
+    font-family: var(--font-sans);
+    text-rendering: optimizeLegibility;
+  }
+}
+
+@keyframes linklane-ring {
+  0% {
+    transform: scale(0.68);
+    opacity: 0.55;
+  }
+  100% {
+    transform: scale(1);
+    opacity: 0;
+  }
+}
+
+.radar-ring {
+  animation: linklane-ring 3.2s ease-out infinite;
+}
+
+.radar-ring-2 {
+  animation-delay: 1.05s;
+}
+
+.radar-ring-3 {
+  animation-delay: 2.1s;
+}
+
+.dock {
+  padding-bottom: max(0.75rem, env(safe-area-inset-bottom));
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .radar-ring {
+    animation: none;
+    opacity: 0.35;
+  }
+}

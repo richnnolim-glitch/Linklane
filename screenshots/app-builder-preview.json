@@ -1,0 +1,36 @@
+{
+  "url": "http://127.0.0.1:8080/",
+  "viewports": {
+    "desktop": {
+      "width": 1280,
+      "height": 800,
+      "status": 200,
+      "title": "Linklane",
+      "hasCanvas": false,
+      "bodyTextLen": 306,
+      "bodyTextHash": "1d19c9f00876ce8efe53a7124789456daf98a0dc35fec64f87c16b4db580ef74",
+      "bodyTextPrefix": "Linklane Windows, Linux, and Android You are Rust Sparrow Wi-Fi ",
+      "horizontalOverflow": false,
+      "consoleErrors": [],
+      "pageErrors": [],
+      "screenshot": "/workspace/screenshots/app-builder-preview.png"
+    },
+    "mobile": {
+      "width": 390,
+      "height": 844,
+      "status": 200,
+      "title": "Linklane",
+      "hasCanvas": false,
+      "bodyTextLen": 305,
+      "bodyTextHash": "3f660b5c2334d876747eb67338ec560271d0f29d457342d0d95c8350976e0ab3",
+      "bodyTextPrefix": "Linklane Windows, Linux, and Android You are This device Wi-Fi o",
+      "horizontalOverflow": false,
+      "consoleErrors": [],
+      "pageErrors": [],
+      "screenshot": "/workspace/screenshots/app-builder-preview-mobile.png"
+    }
+  },
+  "brandWarnings": [],
+  "authWarnings": [],
+  "verdictFile": "/workspace/screenshots/app-builder-preview.json"
+}
