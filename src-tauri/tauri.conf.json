@@ -5,7 +5,7 @@
   "identifier": "app.linklane.desktop",
   "build": {
     "beforeDevCommand": "npm run lan:dev",
-    "devUrl": "http://localhost:1420",
+    "devUrl": "http://localhost:1420/lan.html",
     "beforeBuildCommand": "npm run lan:build",
     "frontendDist": "../dist-lan"
   },
