@@ -116,7 +116,7 @@ export function assembleVerifiedFile(
   if (!Number.isSafeInteger(meta.size) || meta.size < 0 || meta.size > MAX_TRANSFER_BYTES) {
     throw new Error("Invalid advertised file size.");
   }
-  const expectedCount = Math.max(1, Math.ceil(meta.size / CHUNK_BYTES));
+  const expectedCount = Math.ceil(meta.size / CHUNK_BYTES);
   if (chunks.size !== expectedCount) throw new Error("File is incomplete: missing or extra chunks.");
 
   const output = new Uint8Array(meta.size);
