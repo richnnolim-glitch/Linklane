@@ -127,7 +127,7 @@ fn handle_client(mut stream: TcpStream, app: AppHandle, state: Arc<LanState>) {
         remaining -= n as u64;
     }
     let actual = hasher.finalize();
-    if actual.as_slice() != expected_hash { let _ = fs::remove_file(&temp); return; }
+    if actual[..] != expected_hash[..] { let _ = fs::remove_file(&temp); return; }
     let digest = format!("{:x}", actual);
     if let Ok(mut pending) = state.pending.lock() { pending.insert(token.clone(), temp); }
     let request = Incoming {
