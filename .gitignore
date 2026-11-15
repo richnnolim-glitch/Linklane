@@ -1,0 +1,9 @@
+node_modules/
+dist-lan/
+src-tauri/target/
+src-tauri/gen/
+android/.gradle/
+android/local.properties
+android/**/build/
+*.iml
+.idea/
