@@ -6,7 +6,7 @@ Linklane is a standalone local-network sharing app for Android, Windows and Linu
 
 ## Runtime decision
 
-The existing React UI can remain the presentation layer, but browser JavaScript cannot own the required LAN sockets or advertise a service reliably. The app needs a native host. The planned host boundary is Tauri 2 with a Rust networking core shared by desktop and Android. Android-specific lifecycle and Wi-Fi multicast handling must be implemented natively; desktop packaging must include Windows and Linux firewall/network guidance.
+The existing React UI can remain the presentation layer, but browser JavaScript cannot own the required LAN sockets or advertise a service reliably. The app needs a native host. The desktop host now has a Tauri 2/Rust implementation with a standalone React LAN interface. Android currently has a Kotlin foreground-service host and native screen. Both native clients use the initial LNL2 TCP framing for text and files, including SHA-256 file verification; Android and desktop discovery use mDNS with UDP broadcast fallback. The Android UI and desktop React UI are still separate, and the old hosted React LinkEngine has not yet been replaced.
 
 The React layer talks to the host through a narrow adapter. It must not fall back to the existing hosted signaling server when the native bridge is unavailable.
 
@@ -34,16 +34,18 @@ The TypeScript contract in `src/lib/linklane/lan-contract.ts` is the UI/native b
 
 ## Migration phases
 
-### Phase 1 — contract and native boundary
-- Define and test the versioned discovery packet contract.
-- Add the Tauri host and Rust networking crate.
-- Implement mDNS discovery with UDP broadcast fallback and peer expiry.
-- Expose native commands/events to React.
+### Phase 1 — native host foundation (in progress)
+- Define the versioned discovery packet contract.
+- Add a Tauri desktop host, standalone React LAN screen, mDNS and UDP discovery, and direct TCP text/file commands.
+- Add the Android foreground service, mDNS/UDP discovery, native screen, and matching LNL2 text/file framing.
+- Verify file payload SHA-256 before surfacing an incoming-file request.
+- Remaining: stable authenticated identity on both platforms, peer expiry, native UI parity, and a single shared implementation rather than two host implementations.
 
-### Phase 2 — direct transfer
-- Add authenticated TCP control and file streaming.
-- Add receive approval, progress, cancellation, hashes and safe temporary-file handling.
-- Move text sharing off the WebRTC data channel.
+### Phase 2 — secure direct transfer (not complete)
+- Add authenticated TCP control and cryptographic peer identity.
+- Obtain receiver approval before the sender transmits file bytes.
+- Add aggregate storage/request quotas, progress, cancellation, resume and atomic destination writes.
+- Keep the SHA-256 verification already present in the native file framing.
 
 ### Phase 3 — remove hosted transport
 - Replace `LinkEngine` with a transport adapter backed by native commands.
@@ -59,3 +61,4 @@ The TypeScript contract in `src/lib/linklane/lan-contract.ts` is the UI/native b
 ## Known network limitation
 
 A guest network, VLAN or access point with client isolation can block peer-to-peer traffic. Linklane should show a clear “devices cannot reach each other on this Wi-Fi” state; it must not silently route private transfers through a cloud service.
+\n\n## Build status\n\nNative build instructions are in `docs/NATIVE-BUILD.md`. The Tauri desktop host and Android project have not yet been compiled or exercised on devices. Keep the pull request in draft until the native builds, cross-platform protocol compatibility, UI integration, and security requirements are completed.\n
