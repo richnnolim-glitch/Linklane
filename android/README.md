@@ -24,10 +24,10 @@ No account, cloud service, public-IP lookup, room code or STUN server is used by
 
 This is an Android-native MVP, not yet the final production release:
 
-- The Android screen is a native placeholder. The existing React interface has not yet been mounted into this Android host.
-- The wire protocol is a prototype and is not yet interoperable with the desktop Rust host or the TypeScript LAN transport contract.
+- The Android screen is currently a native interface. The desktop standalone React interface is not yet mounted into this Android host.
+- The Android and desktop Rust clients now share the initial LNL2 text/file framing and SHA-256 file verification. The TypeScript hosted transport contract remains separate and is not used by these native clients.
 - Peer identity is currently a discovery identifier, not a cryptographically authenticated identity. Approval is required for every inbound item, but do not use this prototype on untrusted networks for sensitive files.
-- There is no transfer resume, end-to-end integrity digest, multi-file batch UI, persistent trusted-device store, or background transfer recovery yet.
+- There is no transfer resume, cryptographic peer authentication, pre-transfer receiver approval, aggregate storage quota, multi-file batch UI, persistent trusted-device store, or background transfer recovery yet.
 - The listener currently binds to all local interfaces. A production hardening pass must bind only to the active Wi-Fi interface and add authenticated handshakes, request quotas, storage quotas, and integrity verification.
 - The app-specific external files directory is used for accepted items. A production UX should use Android's Storage Access Framework to let the user choose a destination.
 - Android 13+ notification permission is requested. Android lifecycle, Wi-Fi changes, multicast behavior, OEM battery restrictions and Android 14/15 foreground-service policy still require device testing.
