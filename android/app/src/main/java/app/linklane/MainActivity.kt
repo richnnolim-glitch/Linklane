@@ -167,7 +167,7 @@ class MainActivity : Activity() {
     }
 
     private fun peerJsonObject(peer: Peer) = JSONObject()
-        .put("id", peer.id).put("name", peer.name).put("device", peer.kind)
+        .put("id", peer.id).put("name", peer.name).put("device", peer.device)
         .put("address", peer.address.hostAddress).put("port", peer.port)
 
     private fun peerJson(peer: Peer): String = peerJsonObject(peer).toString()
