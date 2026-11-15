@@ -5,5 +5,5 @@ export default defineConfig({
   configFile: false,
   plugins: [react()],
   server: { host: "127.0.0.1", port: 1420, strictPort: true },
-  build: { outDir: "../dist-lan", emptyOutDir: true, rollupOptions: { input: "src/lan.html" } }
+  build: { outDir: "../dist-lan", emptyOutDir: true, rollupOptions: { input: "lan.html" } }
 });
