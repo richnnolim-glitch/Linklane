@@ -197,7 +197,7 @@ fn start_discovery(app: AppHandle, state: Arc<LanState>) {
                     if address.is_empty() { continue; }
                     let peer = Peer {
                         id: id.clone(),
-                        name: info.get_fullname().split('.').next().unwrap_or("Nearby device").to_string(),
+                        name: info.get_property_val_str("name").unwrap_or("Nearby device").to_string(),
                         device: info.get_property_val_str("device").unwrap_or("other").to_string(),
                         address,
                         port: info.get_port()
