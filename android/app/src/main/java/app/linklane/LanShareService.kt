@@ -21,6 +21,7 @@ import java.io.DataOutputStream
 import java.net.DatagramPacket
 import java.net.DatagramSocket
 import java.net.InetAddress
+import java.net.InetSocketAddress
 import java.net.ServerSocket
 import java.net.Socket
 import java.net.SocketTimeoutException
@@ -164,28 +165,39 @@ class LanShareService : Service() {
     private fun udpDiscoveryLoop() {
         while (running.get()) {
             try {
-                DatagramSocket().use { socket ->
-                    socket.broadcast = true
-                    socket.soTimeout = 900
+                DatagramSocket(null).use { receiver ->
+                    receiver.reuseAddress = true
+                    receiver.broadcast = true
+                    receiver.soTimeout = 1000
+                    receiver.bind(InetSocketAddress(UDP_PORT))
                     val request = JSONObject().put("type", "discover").put("version", 1).put("id", deviceId)
                         .toString().toByteArray()
-                    val broadcast = InetAddress.getByName("255.255.255.255")
-                    socket.send(DatagramPacket(request, request.size, broadcast, UDP_PORT))
+                    DatagramSocket().use { sender ->
+                        sender.broadcast = true
+                        sender.send(DatagramPacket(request, request.size,
+                            InetAddress.getByName("255.255.255.255"), UDP_PORT))
+                    }
                     val buffer = ByteArray(1024)
-                    val until = System.currentTimeMillis() + 700
+                    val until = System.currentTimeMillis() + 1800
                     while (running.get() && System.currentTimeMillis() < until) {
                         try {
                             val packet = DatagramPacket(buffer, buffer.size)
-                            socket.receive(packet)
+                            receiver.receive(packet)
                             val json = JSONObject(String(packet.data, packet.offset, packet.length))
-                            if (json.optString("type") == "advertise" && json.optInt("version") == 1) {
+                            if (json.optInt("version") != 1) continue
+                            if (json.optString("type") == "discover") {
+                                if (json.optString("id") == deviceId) continue
+                                val advert = JSONObject().put("type", "advertise").put("version", 1)
+                                    .put("id", deviceId).put("name", deviceName)
+                                    .put("device", "android").put("port", port).toString().toByteArray()
+                                receiver.send(DatagramPacket(advert, advert.size, packet.address, packet.port))
+                            } else if (json.optString("type") == "advertise") {
                                 val id = json.optString("id")
                                 val name = json.optString("name").take(40)
                                 val p = json.optInt("port")
                                 if (id != deviceId && id.matches(Regex("[a-zA-Z0-9-]{8,64}")) &&
                                     p in 1..65535 && name.isNotBlank()) {
-                                    val peer = Peer(id, name, json.optString("device", "other"),
-                                        packet.address, p)
+                                    val peer = Peer(id, name, json.optString("device", "other"), packet.address, p)
                                     peers[id] = peer
                                     sendBroadcast(Intent(ACTION_PEER).setPackage(packageName)
                                         .putExtra(EXTRA_PEER, id).putExtra(EXTRA_NAME, name)
@@ -195,8 +207,8 @@ class LanShareService : Service() {
                         } catch (_: SocketTimeoutException) { break }
                     }
                 }
-            } catch (_: Exception) { /* network may be switching; retry */ }
-            try { Thread.sleep(2500) } catch (_: InterruptedException) { return }
+            } catch (_: Exception) { /* Wi-Fi may be switching; retry */ }
+            try { Thread.sleep(1800) } catch (_: InterruptedException) { return }
         }
     }
 
