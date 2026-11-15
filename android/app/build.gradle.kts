@@ -25,3 +25,13 @@ android {
 dependencies {
     implementation("androidx.core:core-ktx:1.16.0")
 }
+
+val buildLinklaneUi by tasks.registering(Exec::class) {
+    workingDir = rootProject.projectDir.parentFile
+    val npm = if (System.getProperty("os.name").startsWith("Windows")) "npm.cmd" else "npm"
+    commandLine(npm, "run", "lan:android-build")
+}
+
+tasks.named("preBuild").configure {
+    dependsOn(buildLinklaneUi)
+}
