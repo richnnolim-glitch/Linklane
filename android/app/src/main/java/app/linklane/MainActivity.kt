@@ -10,14 +10,14 @@ import android.content.pm.PackageManager
 import android.net.Uri
 import android.os.Build
 import android.os.Bundle
-import android.widget.Button
-import android.widget.EditText
-import android.widget.LinearLayout
-import android.widget.ScrollView
-import android.widget.TextView
+import android.webkit.JavascriptInterface
+import android.webkit.WebView
+import android.webkit.WebViewClient
 import androidx.core.app.ActivityCompat
 import androidx.core.content.ContextCompat
 import androidx.core.content.ContextCompat.RECEIVER_NOT_EXPORTED
+import org.json.JSONArray
+import org.json.JSONObject
 import java.io.File
 import java.net.InetAddress
 import java.security.MessageDigest
@@ -25,15 +25,15 @@ import java.util.concurrent.ConcurrentHashMap
 import java.util.concurrent.Executors
 
 /**
- * Small native Android client shell. The next UI integration step replaces
- * this screen with the existing React UI while keeping this native service.
+ * Android native host for the shared React Linklane interface.
+ * All LAN sockets, discovery and transfer work stay in LanShareService.
  */
 class MainActivity : Activity() {
     private val peers = ConcurrentHashMap<String, Peer>()
     private val io = Executors.newSingleThreadExecutor()
-    private lateinit var status: TextView
-    private lateinit var peerList: LinearLayout
-    private lateinit var message: EditText
+    private lateinit var webView: WebView
+    @Volatile private var selectedPeer: Peer? = null
+
     private val receiver = object : BroadcastReceiver() {
         override fun onReceive(context: Context?, intent: Intent?) {
             when (intent?.action) {
@@ -42,97 +42,144 @@ class MainActivity : Activity() {
                     val address = intent.getStringExtra("address") ?: return
                     val host = address.substringBeforeLast(":")
                     val port = address.substringAfterLast(":").toIntOrNull() ?: return
-                    val peer = Peer(id, intent.getStringExtra(LanShareService.EXTRA_NAME) ?: "Device",
-                        "other", InetAddress.getByName(host), port)
+                    val peer = Peer(
+                        id,
+                        intent.getStringExtra(LanShareService.EXTRA_NAME) ?: "Nearby device",
+                        intent.getStringExtra(LanShareService.EXTRA_KIND) ?: "other",
+                        InetAddress.getByName(host),
+                        port
+                    )
                     peers[id] = peer
-                    runOnUiThread { renderPeers() }
+                    emit("linklanePeer", peerJson(peer))
                 }
-                LanShareService.ACTION_STATUS ->
-                    runOnUiThread { status.text = intent.getStringExtra("message") ?: "Ready" }
+                LanShareService.ACTION_STATUS -> {
+                    emit("linklaneStatus", JSONObject.quote(intent.getStringExtra("message") ?: "Ready"))
+                }
                 LanShareService.ACTION_INCOMING -> {
                     val token = intent.getStringExtra(LanShareService.EXTRA_TOKEN) ?: return
                     val name = intent.getStringExtra(LanShareService.EXTRA_NAME) ?: "Incoming item"
                     val size = intent.getLongExtra(LanShareService.EXTRA_SIZE, 0)
-                    runOnUiThread {
-                        android.app.AlertDialog.Builder(this@MainActivity)
-                            .setTitle("Incoming from nearby device")
-                            .setMessage("$name ($size bytes). Save this item?")
-                            .setNegativeButton("Reject") { _, _ -> reject(token) }
-                            .setPositiveButton("Accept") { _, _ -> accept(token, name) }
-                            .setCancelable(false).show()
+                    val kind = intent.getStringExtra(LanShareService.EXTRA_KIND) ?: "file"
+                    if (kind == "text") {
+                        val staged = File(cacheDir, "incoming-$token.txt")
+                        val text = runCatching { staged.readText(Charsets.UTF_8) }.getOrDefault("")
+                        staged.delete()
+                        emit("linklaneTextIncoming", JSONObject()
+                            .put("peerName", "Nearby device").put("text", text).toString())
+                    } else {
+                        emit("linklaneIncoming", JSONObject()
+                            .put("token", token).put("name", name).put("size", size)
+                            .put("peer_name", "Nearby device").put("kind", kind).toString())
                     }
                 }
             }
         }
     }
 
+    inner class LinklaneBridge {
+        @JavascriptInterface
+        fun getPeers(): String = JSONArray().apply {
+            peers.values.sortedBy { it.name }.forEach { put(peerJsonObject(it)) }
+        }.toString()
+
+        @JavascriptInterface
+        fun sendText(peerId: String, text: String) {
+            val peer = peers[peerId] ?: return
+            io.execute {
+                val ok = sendTextTo(peer, text)
+                emit("linklaneStatus", JSONObject.quote(if (ok) "Text sent directly over Wi-Fi" else "Text send failed"))
+            }
+        }
+
+        @JavascriptInterface
+        fun chooseFile(peerId: String) {
+            selectedPeer = peers[peerId]
+            runOnUiThread {
+                if (selectedPeer == null) {
+                    emit("linklaneStatus", JSONObject.quote("Select an online device first"))
+                    return@runOnUiThread
+                }
+                startActivityForResult(
+                    Intent(Intent.ACTION_OPEN_DOCUMENT).setType("*/*")
+                        .addCategory(Intent.CATEGORY_OPENABLE),
+                    REQUEST_FILE
+                )
+            }
+        }
+
+        @JavascriptInterface
+        fun accept(token: String, name: String) {
+            runOnUiThread { acceptIncoming(token, name) }
+        }
+
+        @JavascriptInterface
+        fun reject(token: String) {
+            runOnUiThread { rejectIncoming(token) }
+        }
+    }
+
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         requestPermissionsIfNeeded()
-        val root = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL; setPadding(24, 28, 24, 24) }
-        root.addView(TextView(this).apply { text = "Linklane"; textSize = 28f })
-        status = TextView(this).apply { text = "Starting local discovery…"; textSize = 14f }
-        root.addView(status)
-        root.addView(TextView(this).apply { text = "Devices on this Wi-Fi"; textSize = 18f; setPadding(0, 24, 0, 8) })
-        peerList = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL }
-        root.addView(ScrollView(this).apply { addView(peerList) },
-            LinearLayout.LayoutParams(-1, 0, 1f))
-        message = EditText(this).apply { hint = "Text to send to selected device" }
-        root.addView(message)
-        val sendText = Button(this).apply { text = "Send text"; isEnabled = false }
-        root.addView(sendText)
-        sendText.setOnClickListener {
-            val peer = selectedPeer ?: return@setOnClickListener
-            val text = message.text.toString()
-            io.execute {
-                val ok = sendText(peer, text)
-                runOnUiThread { status.text = if (ok) "Text sent" else "Text send failed" }
+        webView = WebView(this).apply {
+            settings.javaScriptEnabled = true
+            settings.domStorageEnabled = true
+            settings.allowFileAccess = true
+            settings.allowContentAccess = false
+            addJavascriptInterface(LinklaneBridge(), "Linklane")
+            webViewClient = object : WebViewClient() {
+                override fun onPageFinished(view: WebView?, url: String?) {
+                    super.onPageFinished(view, url)
+                    emit("linklaneStatus", JSONObject.quote("Searching this local network"))
+                    peers.values.forEach { emit("linklanePeer", peerJson(it)) }
+                }
             }
         }
-        val pick = Button(this).apply { text = "Choose file" }
-        root.addView(pick)
-        pick.setOnClickListener {
-            if (selectedPeer == null) { status.text = "Select a device first"; return@setOnClickListener }
-            startActivityForResult(Intent(Intent.ACTION_OPEN_DOCUMENT).setType("*/*").addCategory(Intent.CATEGORY_OPENABLE), 71)
-        }
-        setContentView(root)
-        if (Build.VERSION.SDK_INT >= 33) {
-            registerReceiver(receiver, IntentFilter().apply {
-                addAction(LanShareService.ACTION_PEER); addAction(LanShareService.ACTION_STATUS)
-                addAction(LanShareService.ACTION_INCOMING)
-            }, RECEIVER_NOT_EXPORTED)
-        } else {
-            @Suppress("DEPRECATION")
-            registerReceiver(receiver, IntentFilter().apply {
-                addAction(LanShareService.ACTION_PEER); addAction(LanShareService.ACTION_STATUS)
-                addAction(LanShareService.ACTION_INCOMING)
-            })
-        }
+        setContentView(webView)
+        registerAppReceiver()
         ContextCompat.startForegroundService(this, Intent(this, LanShareService::class.java))
-        sendText.isEnabled = true
+        webView.loadUrl("file:///android_asset/linklane/lan-android.html")
     }
 
-    private var selectedPeer: Peer? = null
-
-    private fun renderPeers() {
-        peerList.removeAllViews()
-        peers.values.sortedBy { it.name }.forEach { peer ->
-            val button = Button(this).apply {
-                text = if (selectedPeer?.id == peer.id) "✓ ${peer.name}  •  ${peer.address}" else "${peer.name}  •  ${peer.address}"
-                setOnClickListener { selectedPeer = peer; renderPeers() }
-            }
-            peerList.addView(button)
+    private fun registerAppReceiver() {
+        val filter = IntentFilter().apply {
+            addAction(LanShareService.ACTION_PEER)
+            addAction(LanShareService.ACTION_STATUS)
+            addAction(LanShareService.ACTION_INCOMING)
         }
-        if (peers.isEmpty()) peerList.addView(TextView(this).apply { text = "No devices found yet. Keep both devices on the same private Wi-Fi." })
+        if (Build.VERSION.SDK_INT >= 33) registerReceiver(receiver, filter, RECEIVER_NOT_EXPORTED)
+        else {
+            @Suppress("DEPRECATION")
+            registerReceiver(receiver, filter)
+        }
     }
 
-    private fun sendText(peer: Peer, text: String): Boolean = runCatching {
+    private fun peerJsonObject(peer: Peer) = JSONObject()
+        .put("id", peer.id).put("name", peer.name).put("device", peer.kind)
+        .put("address", peer.address.hostAddress).put("port", peer.port)
+
+    private fun peerJson(peer: Peer): String = peerJsonObject(peer).toString()
+
+    private fun emit(function: String, payload: String) {
+        if (!::webView.isInitialized) return
+        runOnUiThread {
+            if (::webView.isInitialized) {
+                webView.evaluateJavascript("window.$function && window.$function($payload)", null)
+            }
+        }
+    }
+
+    private fun sendTextTo(peer: Peer, text: String): Boolean = runCatching {
         val bytes = text.toByteArray(Charsets.UTF_8)
         require(bytes.isNotEmpty() && bytes.size <= 64 * 1024)
         java.net.Socket(peer.host, peer.port).use { socket ->
             val out = java.io.DataOutputStream(socket.getOutputStream())
             val input = java.io.DataInputStream(socket.getInputStream())
-            out.writeInt(0x4c4e4c32); out.writeByte(1); out.writeInt(bytes.size); out.write(bytes); out.flush()
+            out.writeInt(0x4c4e4c32)
+            out.writeByte(1)
+            out.writeInt(bytes.size)
+            out.write(bytes)
+            out.flush()
             input.readBoolean()
         }
     }.getOrDefault(false)
@@ -140,7 +187,7 @@ class MainActivity : Activity() {
     @Deprecated("Use Activity Result API in production")
     override fun onActivityResult(requestCode: Int, resultCode: Int, data: Intent?) {
         super.onActivityResult(requestCode, resultCode, data)
-        if (requestCode != 71 || resultCode != RESULT_OK) return
+        if (requestCode != REQUEST_FILE || resultCode != RESULT_OK) return
         val uri: Uri = data?.data ?: return
         val peer = selectedPeer ?: return
         io.execute {
@@ -149,11 +196,15 @@ class MainActivity : Activity() {
             val digest = contentResolver.openInputStream(uri)?.use { input ->
                 val md = MessageDigest.getInstance("SHA-256")
                 val buffer = ByteArray(64 * 1024)
-                while (true) { val n = input.read(buffer); if (n < 0) break; md.update(buffer, 0, n) }
+                while (true) {
+                    val n = input.read(buffer)
+                    if (n < 0) break
+                    md.update(buffer, 0, n)
+                }
                 md.digest().joinToString("") { "%02x".format(it) }
             }
             val ok = digest?.let { sendFile(peer, name, uri, size, it) } ?: false
-            runOnUiThread { status.text = if (ok) "File sent" else "File transfer failed" }
+            emit("linklaneStatus", JSONObject.quote(if (ok) "File sent directly over Wi-Fi" else "File transfer failed"))
         }
     }
 
@@ -162,47 +213,51 @@ class MainActivity : Activity() {
             require(size in 0..1_500_000_000L)
             val digest = digestHex.chunked(2).map { it.toInt(16).toByte() }.toByteArray()
             require(digest.size == 32)
-            val safeName = name.substringAfterLast('/').substringAfterLast('\\').take(180)
+            val safeName = name.substringAfterLast('/').substringAfterLast('\\\\').take(180)
                 .toByteArray(Charsets.UTF_8)
             require(safeName.isNotEmpty() && safeName.size <= 240)
             java.net.Socket(peer.host, peer.port).use { socket ->
                 val out = java.io.DataOutputStream(java.io.BufferedOutputStream(socket.getOutputStream()))
                 val ack = java.io.DataInputStream(socket.getInputStream())
-                out.writeInt(0x4c4e4c32); out.writeByte(2); out.writeShort(safeName.size)
-                out.write(safeName); out.writeLong(size); out.write(digest)
+                out.writeInt(0x4c4e4c32)
+                out.writeByte(2)
+                out.writeShort(safeName.size)
+                out.write(safeName)
+                out.writeLong(size)
+                out.write(digest)
                 contentResolver.openInputStream(uri)?.use { stream ->
-                    val buffer = ByteArray(64 * 1024); var remaining = size
+                    val buffer = ByteArray(64 * 1024)
+                    var remaining = size
                     while (remaining > 0) {
                         val n = stream.read(buffer, 0, minOf(buffer.size.toLong(), remaining).toInt())
                         if (n < 0) throw java.io.EOFException("File changed during transfer")
-                        out.write(buffer, 0, n); remaining -= n
+                        out.write(buffer, 0, n)
+                        remaining -= n
                     }
                 } ?: throw java.io.IOException("Could not reopen the selected file")
-                out.flush(); ack.readBoolean()
+                out.flush()
+                ack.readBoolean()
             }
         }.getOrDefault(false)
 
-    private fun queryName(uri: Uri): String? = contentResolver.query(uri, arrayOf(android.provider.OpenableColumns.DISPLAY_NAME), null, null, null)
-        ?.use { if (it.moveToFirst()) it.getString(0) else null }
+    private fun queryName(uri: Uri): String? =
+        contentResolver.query(uri, arrayOf(android.provider.OpenableColumns.DISPLAY_NAME), null, null, null)
+            ?.use { if (it.moveToFirst()) it.getString(0) else null }
 
-    private fun accept(token: String, name: String) {
-        val destination = File(getExternalFilesDir(null), name.replace(Regex("[/\\\\]"), "_"))
-        // Incoming payloads remain private until this explicit approval action.
-        val staged = sequenceOf(
-            File(cacheDir, "incoming-$token.part"),
-            File(cacheDir, "incoming-$token.txt")
-        ).firstOrNull { it.exists() }
-        if (staged != null) {
+    private fun acceptIncoming(token: String, name: String) {
+        val destination = File(getExternalFilesDir(null), name.replace(Regex("[/\\\\\\\\]"), "_"))
+        val staged = File(cacheDir, "incoming-$token.part")
+        if (staged.exists()) {
             runCatching { staged.copyTo(destination, overwrite = false); staged.delete() }
-                .onSuccess { status.text = "Saved to app files: ${destination.name}" }
-                .onFailure { status.text = "Could not save: ${it.message}" }
-        } else status.text = "Incoming item expired"
+                .onSuccess { emit("linklaneStatus", JSONObject.quote("Saved to app files: ${destination.name}")) }
+                .onFailure { emit("linklaneStatus", JSONObject.quote("Could not save: ${it.message}")) }
+        } else emit("linklaneStatus", JSONObject.quote("Incoming item expired"))
     }
 
-    private fun reject(token: String) {
+    private fun rejectIncoming(token: String) {
         File(cacheDir, "incoming-$token.part").delete()
         File(cacheDir, "incoming-$token.txt").delete()
-        status.text = "Incoming item rejected"
+        emit("linklaneStatus", JSONObject.quote("Incoming item rejected"))
     }
 
     private fun requestPermissionsIfNeeded() {
@@ -219,4 +274,6 @@ class MainActivity : Activity() {
         io.shutdownNow()
         super.onDestroy()
     }
+
+    companion object { private const val REQUEST_FILE = 71 }
 }
