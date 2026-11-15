@@ -172,11 +172,8 @@ class LanShareService : Service() {
                     receiver.bind(InetSocketAddress(UDP_PORT))
                     val request = JSONObject().put("type", "discover").put("version", 1).put("id", deviceId)
                         .toString().toByteArray()
-                    DatagramSocket().use { sender ->
-                        sender.broadcast = true
-                        sender.send(DatagramPacket(request, request.size,
-                            InetAddress.getByName("255.255.255.255"), UDP_PORT))
-                    }
+                    receiver.send(DatagramPacket(request, request.size,
+                        InetAddress.getByName("255.255.255.255"), UDP_PORT))
                     val buffer = ByteArray(1024)
                     val until = System.currentTimeMillis() + 1800
                     while (running.get() && System.currentTimeMillis() < until) {
