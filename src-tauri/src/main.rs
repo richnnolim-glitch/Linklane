@@ -185,7 +185,7 @@ fn start_discovery(app: AppHandle, state: Arc<LanState>) {
                 Ok(ServiceEvent::ServiceResolved(info)) => {
                     let id = info.get_property_val_str("id").unwrap_or("").to_string();
                     if id.is_empty() || id == state.device_id { continue; }
-                    let address = info.get_addresses().iter().next().map(|a| a.to_string()).unwrap_or_default();
+                    let address = info.get_addresses().iter().find(|a| a.is_ipv4()).map(|a| a.to_string()).unwrap_or_default();
                     if address.is_empty() { continue; }
                     let peer = Peer {
                         id: id.clone(),
@@ -207,7 +207,7 @@ fn start_discovery(app: AppHandle, state: Arc<LanState>) {
                 if let Ok((n, source)) = socket.recv_from(&mut buffer) {
                     if let Ok(packet) = serde_json::from_slice::<serde_json::Value>(&buffer[..n]) {
                         if packet["version"].as_u64() == Some(1) && packet["type"] == "discover" {
-                            if packet["id"].as_str() != Some(&state.device_id) {
+                            if packet["id"].as_str() != Some(state.device_id.as_str()) {
                                 let advert = serde_json::json!({
                                     "type":"advertise","version":1,"id":state.device_id,
                                     "name":state.device_name,"device":"desktop","port":TCP_PORT
