@@ -312,15 +312,31 @@ class LanShareService : Service() {
 
     fun sendFile(peer: Peer, name: String, source: java.io.InputStream, size: Long): Boolean = runCatching {
         require(size in 0..MAX_FILE_BYTES)
-        val safe = name.substringAfterLast('/').substringAfterLast('\\').take(180)
+        val safe = name.substringAfterLast('/').substringAfterLast('\\\\').take(180)
             .toByteArray(Charsets.UTF_8).also { require(it.size in 1..MAX_NAME_BYTES) }
-        Socket(peer.host, peer.port).use { socket ->
-            val out = DataOutputStream(BufferedOutputStream(socket.getOutputStream()))
-            val input = DataInputStream(BufferedInputStream(socket.getInputStream()))
-            out.writeInt(MAGIC); out.writeByte(2); out.writeShort(safe.size); out.write(safe); out.writeLong(size)
-            source.use { it.copyTo(out, 64 * 1024) }; out.flush()
-            input.readBoolean()
-        }
+        val staged = File.createTempFile("linklane-out-", ".part", cacheDir)
+        try {
+            FileOutputStream(staged).use { output ->
+                source.use { input ->
+                    val buffer = ByteArray(64 * 1024); var remaining = size
+                    while (remaining > 0) {
+                        val n = input.read(buffer, 0, minOf(buffer.size.toLong(), remaining).toInt())
+                        if (n < 0) throw java.io.EOFException("File changed during transfer")
+                        output.write(buffer, 0, n); remaining -= n
+                    }
+                }
+                output.fd.sync()
+            }
+            val digest = MessageDigest.getInstance("SHA-256").digest(staged.readBytes())
+            Socket(peer.host, peer.port).use { socket ->
+                val out = DataOutputStream(BufferedOutputStream(socket.getOutputStream()))
+                val input = DataInputStream(BufferedInputStream(socket.getInputStream()))
+                out.writeInt(MAGIC); out.writeByte(2); out.writeShort(safe.size); out.write(safe)
+                out.writeLong(size); out.write(digest)
+                staged.inputStream().use { it.copyTo(out, 64 * 1024) }; out.flush()
+                input.readBoolean()
+            }
+        } finally { staged.delete() }
     }.getOrDefault(false)
 
     private fun broadcastStatus(message: String) {
