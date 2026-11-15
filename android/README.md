@@ -4,10 +4,11 @@ This directory contains the first native Android client for the LAN-first Linkla
 
 ## Open and build
 
-1. Open the `android/` directory in Android Studio (Ladybug or newer).
-2. Install Android SDK 35 and JDK 17.
-3. Let Gradle sync, then run the `app` configuration on two Android devices connected to the same private Wi-Fi.
-4. Grant notification permission when prompted. Linklane uses a foreground service while discovery and transfers are active.
+1. From the repository root, run `npm install` (Node.js 20+ is required to build the embedded React UI).
+2. Open the `android/` directory in Android Studio (Ladybug or newer).
+3. Install Android SDK 35 and JDK 17.
+4. Let Gradle sync, then run the `app` configuration on two Android devices connected to the same private Wi-Fi. The Gradle `preBuild` task builds and bundles the React UI into the APK.
+5. Grant nearby Wi-Fi and notification permissions when prompted. Linklane uses a foreground service while discovery and transfers are active.
 
 No account, cloud service, public-IP lookup, room code or STUN server is used by this Android prototype.
 
@@ -24,7 +25,7 @@ No account, cloud service, public-IP lookup, room code or STUN server is used by
 
 This is an Android-native MVP, not yet the final production release:
 
-- The Android screen is currently a native interface. The desktop standalone React interface is not yet mounted into this Android host.
+- The Android app now hosts a React interface inside a native WebView bridge. Its Android bridge and desktop Tauri bridge currently have separate implementations, so UI behavior still needs a parity pass.
 - The Android and desktop Rust clients now share the initial LNL2 text/file framing and SHA-256 file verification. The TypeScript hosted transport contract remains separate and is not used by these native clients.
 - Peer identity is currently a discovery identifier, not a cryptographically authenticated identity. Approval is required for every inbound item, but do not use this prototype on untrusted networks for sensitive files.
 - There is no transfer resume, cryptographic peer authentication, pre-transfer receiver approval, aggregate storage quota, multi-file batch UI, persistent trusted-device store, or background transfer recovery yet.
