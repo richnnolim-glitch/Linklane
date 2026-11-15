@@ -116,6 +116,7 @@ class LanShareService : Service() {
             port = this@LanShareService.port
             setAttribute("v", "1")
             setAttribute("id", deviceId)
+            setAttribute("name", deviceName)
             setAttribute("device", "android")
         }
         val listener = object : NsdManager.RegistrationListener {
