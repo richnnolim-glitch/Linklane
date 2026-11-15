@@ -14,6 +14,8 @@ import androidx.core.app.NotificationCompat
 import org.json.JSONObject
 import java.io.BufferedInputStream
 import java.io.BufferedOutputStream
+import java.io.File
+import java.io.FileOutputStream
 import java.io.DataInputStream
 import java.io.DataOutputStream
 import java.net.DatagramPacket
@@ -101,8 +103,6 @@ class LanShareService : Service() {
         }
         io.execute { runServer() }
         io.execute { udpDiscoveryLoop() }
-        registerService()
-        discoverServices()
         broadcastStatus("Searching this local network")
     }
 
@@ -205,6 +205,8 @@ class LanShareService : Service() {
             ServerSocket(DEFAULT_TCP_PORT, 32, InetAddress.getByName("0.0.0.0")).use { listener ->
                 server = listener
                 port = listener.localPort
+                registerService()
+                discoverServices()
                 while (running.get()) {
                     val socket = listener.accept()
                     io.execute { handleClient(socket) }
