@@ -140,7 +140,15 @@ fn handle_client(mut stream: TcpStream, app: AppHandle, state: Arc<LanState>) {
 
 fn start_tcp(app: AppHandle, state: Arc<LanState>) {
     thread::spawn(move || {
-        let listener = match TcpListener::bind(("0.0.0.0", TCP_PORT)) {
+        let bind_ip = match UdpSocket::bind("0.0.0.0:0").and_then(|s| {
+            s.connect("192.0.2.1:9")?;
+            s.local_addr()
+        }) {
+            Ok(address) if address.ip().is_ipv4() => address.ip(),
+            Ok(_) => { emit_status(&app, "No IPv4 LAN interface is available"); return; }
+            Err(e) => { emit_status(&app, &format!("Could not identify the LAN interface: {e}")); return; }
+        };
+        let listener = match TcpListener::bind(SocketAddr::new(bind_ip, TCP_PORT)) {
             Ok(v) => v,
             Err(e) => { emit_status(&app, &format!("Local listener unavailable: {e}")); return; }
         };
