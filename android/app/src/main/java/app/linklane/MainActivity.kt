@@ -20,6 +20,7 @@ import androidx.core.content.ContextCompat
 import androidx.core.content.ContextCompat.RECEIVER_NOT_EXPORTED
 import java.io.File
 import java.net.InetAddress
+import java.security.MessageDigest
 import java.util.concurrent.ConcurrentHashMap
 import java.util.concurrent.Executors
 
@@ -131,7 +132,7 @@ class MainActivity : Activity() {
         java.net.Socket(peer.host, peer.port).use { socket ->
             val out = java.io.DataOutputStream(socket.getOutputStream())
             val input = java.io.DataInputStream(socket.getInputStream())
-            out.writeInt(0x4c4e4c31); out.writeByte(1); out.writeInt(bytes.size); out.write(bytes); out.flush()
+            out.writeInt(0x4c4e4c32); out.writeByte(1); out.writeInt(bytes.size); out.write(bytes); out.flush()
             input.readBoolean()
         }
     }.getOrDefault(false)
@@ -145,32 +146,38 @@ class MainActivity : Activity() {
         io.execute {
             val size = contentResolver.openAssetFileDescriptor(uri, "r")?.use { it.length } ?: -1L
             val name = queryName(uri) ?: "shared-file"
-            val ok = contentResolver.openInputStream(uri)?.let { input ->
-                sendFile(peer, name, input, size)
-            } ?: false
+            val digest = contentResolver.openInputStream(uri)?.use { input ->
+                val md = MessageDigest.getInstance("SHA-256")
+                val buffer = ByteArray(64 * 1024)
+                while (true) { val n = input.read(buffer); if (n < 0) break; md.update(buffer, 0, n) }
+                md.digest().joinToString("") { "%02x".format(it) }
+            }
+            val ok = digest?.let { sendFile(peer, name, uri, size, it) } ?: false
             runOnUiThread { status.text = if (ok) "File sent" else "File transfer failed" }
         }
     }
 
-    private fun sendFile(peer: Peer, name: String, input: java.io.InputStream, size: Long): Boolean =
+    private fun sendFile(peer: Peer, name: String, uri: Uri, size: Long, digestHex: String): Boolean =
         runCatching {
             require(size in 0..1_500_000_000L)
+            val digest = digestHex.chunked(2).map { it.toInt(16).toByte() }.toByteArray()
+            require(digest.size == 32)
             val safeName = name.substringAfterLast('/').substringAfterLast('\\').take(180)
                 .toByteArray(Charsets.UTF_8)
             require(safeName.isNotEmpty() && safeName.size <= 240)
             java.net.Socket(peer.host, peer.port).use { socket ->
                 val out = java.io.DataOutputStream(java.io.BufferedOutputStream(socket.getOutputStream()))
                 val ack = java.io.DataInputStream(socket.getInputStream())
-                out.writeInt(0x4c4e4c31); out.writeByte(2); out.writeShort(safeName.size)
-                out.write(safeName); out.writeLong(size)
-                input.use { stream ->
+                out.writeInt(0x4c4e4c32); out.writeByte(2); out.writeShort(safeName.size)
+                out.write(safeName); out.writeLong(size); out.write(digest)
+                contentResolver.openInputStream(uri)?.use { stream ->
                     val buffer = ByteArray(64 * 1024); var remaining = size
                     while (remaining > 0) {
                         val n = stream.read(buffer, 0, minOf(buffer.size.toLong(), remaining).toInt())
                         if (n < 0) throw java.io.EOFException("File changed during transfer")
                         out.write(buffer, 0, n); remaining -= n
                     }
-                }
+                } ?: throw java.io.IOException("Could not reopen the selected file")
                 out.flush(); ack.readBoolean()
             }
         }.getOrDefault(false)
