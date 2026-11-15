@@ -262,7 +262,10 @@ class MainActivity : Activity() {
 
     private fun requestPermissionsIfNeeded() {
         if (Build.VERSION.SDK_INT >= 33) {
-            val needed = arrayOf(Manifest.permission.POST_NOTIFICATIONS).filter {
+            val needed = arrayOf(
+                Manifest.permission.POST_NOTIFICATIONS,
+                Manifest.permission.NEARBY_WIFI_DEVICES
+            ).filter {
                 ContextCompat.checkSelfPermission(this, it) != PackageManager.PERMISSION_GRANTED
             }
             if (needed.isNotEmpty()) ActivityCompat.requestPermissions(this, needed.toTypedArray(), 4)
