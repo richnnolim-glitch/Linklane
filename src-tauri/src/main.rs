@@ -240,8 +240,37 @@ fn reject_incoming(token: String, state: State<'_, Arc<LanState>>) -> Result<(),
     Ok(())
 }
 
+
+#[tauri::command]
+fn send_file(peer_id: String, path: String, state: State<'_, Arc<LanState>>) -> Result<(), String> {
+    let peer = state.peers.lock().map_err(|e| e.to_string())?
+        .get(&peer_id).cloned().ok_or("Device is not online")?;
+    let source = PathBuf::from(&path);
+    let metadata = fs::metadata(&source).map_err(|e| e.to_string())?;
+    if !metadata.is_file() || metadata.len() > MAX_FILE { return Err("File is too large or invalid.".into()); }
+    let name = safe_name(source.file_name().and_then(|v| v.to_str()).unwrap_or("shared-file"));
+    let name_bytes = name.as_bytes();
+    let digest = hash_file(&source)?;
+    let digest_bytes = hex::decode(digest).map_err(|e| e.to_string())?;
+    let address: SocketAddr = format!("{}:{}", peer.address, peer.port).parse().map_err(|e: std::net::AddrParseError| e.to_string())?;
+    let mut stream = TcpStream::connect_timeout(&address, Duration::from_secs(5)).map_err(|e| e.to_string())?;
+    stream.write_all(MAGIC).map_err(|e| e.to_string())?;
+    stream.write_all(&[2]).map_err(|e| e.to_string())?;
+    stream.write_all(&(name_bytes.len() as u16).to_be_bytes()).map_err(|e| e.to_string())?;
+    stream.write_all(name_bytes).map_err(|e| e.to_string())?;
+    stream.write_all(&metadata.len().to_be_bytes()).map_err(|e| e.to_string())?;
+    stream.write_all(&digest_bytes).map_err(|e| e.to_string())?;
+    let mut file = File::open(source).map_err(|e| e.to_string())?;
+    std::io::copy(&mut file, &mut stream).map_err(|e| e.to_string())?;
+    let mut ack = [0u8; 1];
+    stream.read_exact(&mut ack).map_err(|e| e.to_string())?;
+    if ack[0] != 1 { return Err("Peer rejected the file.".into()); }
+    Ok(())
+}
+
 fn main() {
     tauri::Builder::default()
+        .plugin(tauri_plugin_dialog::init())
         .setup(|app| {
             let state = Arc::new(LanState {
                 device_id: Uuid::new_v4().to_string(),
@@ -253,7 +282,7 @@ fn main() {
             start_discovery(app.handle().clone(), state);
             Ok(())
         })
-        .invoke_handler(tauri::generate_handler![list_peers, send_text, approve_incoming, reject_incoming])
+        .invoke_handler(tauri::generate_handler![list_peers, send_text, approve_incoming, reject_incoming, send_file])
         .run(tauri::generate_context!())
         .expect("error while running Linklane");
 }
