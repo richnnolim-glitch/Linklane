@@ -56,7 +56,7 @@ class LanShareService : Service() {
         private const val SERVICE_TYPE = "_linklane._tcp."
         private const val UDP_PORT = 45821
         private const val DEFAULT_TCP_PORT = 45822
-        private const val MAGIC = 0x4c4e4c31 // LNL1
+        private const val MAGIC = 0x4c4e4c32 // LNL2
         private const val MAX_TEXT_BYTES = 64 * 1024
         private const val MAX_FILE_BYTES = 1_500_000_000L
         private const val MAX_NAME_BYTES = 240
@@ -252,18 +252,25 @@ class LanShareService : Service() {
                     val name = String(nameBytes).replace(Regex("[\\\\/\\u0000-\\u001f]"), "_").take(180)
                     val size = input.readLong()
                     if (size !in 0..MAX_FILE_BYTES) return
+                    val expectedDigest = ByteArray(32); input.readFully(expectedDigest)
                     val token = UUID.randomUUID().toString()
                     val staged = File(cacheDir, "incoming-$token.part")
                     FileOutputStream(staged).use { fileOut ->
+                        val digest = MessageDigest.getInstance("SHA-256")
                         val buffer = ByteArray(64 * 1024)
                         var remaining = size
                         while (remaining > 0) {
                             val n = input.read(buffer, 0, minOf(buffer.size.toLong(), remaining).toInt())
                             if (n < 0) throw java.io.EOFException("Transfer ended early")
                             fileOut.write(buffer, 0, n)
+                            digest.update(buffer, 0, n)
                             remaining -= n
                         }
                         fileOut.fd.sync()
+                        if (!MessageDigest.isEqual(expectedDigest, digest.digest())) {
+                            staged.delete()
+                            return
+                        }
                     }
                     pending[token] = staged
                     sendIncoming(token, name, size, "file")
