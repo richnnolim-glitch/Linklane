@@ -1,8 +1,20 @@
 import React, { useEffect, useState } from "react";
 import { createRoot } from "react-dom/client";
-import { invoke } from "@tauri-apps/api/core";
-import { listen } from "@tauri-apps/api/event";
-import { open, save } from "@tauri-apps/plugin-dialog";
+declare global {
+  interface Window {
+    __TAURI__: {
+      core: { invoke<T = unknown>(command: string, args?: Record<string, unknown>): Promise<T> };
+      event: { listen<T>(event: string, handler: (event: { payload: T }) => void): Promise<() => void> };
+      dialog: {
+        open(options?: Record<string, unknown>): Promise<string | string[] | null>;
+        save(options?: Record<string, unknown>): Promise<string | null>;
+      };
+    };
+  }
+}
+const { invoke } = window.__TAURI__.core;
+const { listen } = window.__TAURI__.event;
+const { open, save } = window.__TAURI__.dialog;
 
 type Peer = { id: string; name: string; device: string; address: string; port: number };
 type Incoming = { token: string; peer_id: string; peer_name: string; name: string; size: number; sha256: string; kind: string };
