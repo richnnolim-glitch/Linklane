@@ -327,7 +327,12 @@ class LanShareService : Service() {
                 }
                 output.fd.sync()
             }
-            val digest = MessageDigest.getInstance("SHA-256").digest(staged.readBytes())
+            val md = MessageDigest.getInstance("SHA-256")
+            staged.inputStream().use { input ->
+                val buffer = ByteArray(64 * 1024)
+                while (true) { val n = input.read(buffer); if (n < 0) break; md.update(buffer, 0, n) }
+            }
+            val digest = md.digest()
             Socket(peer.host, peer.port).use { socket ->
                 val out = DataOutputStream(BufferedOutputStream(socket.getOutputStream()))
                 val input = DataInputStream(BufferedInputStream(socket.getInputStream()))
