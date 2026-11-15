@@ -13,6 +13,9 @@ import android.os.Bundle
 import android.webkit.JavascriptInterface
 import android.webkit.WebView
 import android.webkit.WebViewClient
+import android.webkit.WebResourceRequest
+import android.webkit.WebResourceResponse
+import androidx.webkit.WebViewAssetLoader
 import androidx.core.app.ActivityCompat
 import androidx.core.content.ContextCompat
 import androidx.core.content.ContextCompat.RECEIVER_NOT_EXPORTED
@@ -121,13 +124,19 @@ class MainActivity : Activity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         requestPermissionsIfNeeded()
+        val assetLoader = WebViewAssetLoader.Builder()
+            .addPathHandler("/assets/", WebViewAssetLoader.AssetsPathHandler(this))
+            .build()
         webView = WebView(this).apply {
             settings.javaScriptEnabled = true
             settings.domStorageEnabled = true
-            settings.allowFileAccess = true
+            settings.allowFileAccess = false
             settings.allowContentAccess = false
             addJavascriptInterface(LinklaneBridge(), "Linklane")
             webViewClient = object : WebViewClient() {
+                override fun shouldInterceptRequest(view: WebView, request: WebResourceRequest): WebResourceResponse? =
+                    assetLoader.shouldInterceptRequest(request.url)
+
                 override fun onPageFinished(view: WebView?, url: String?) {
                     super.onPageFinished(view, url)
                     emit("linklaneStatus", JSONObject.quote("Searching this local network"))
@@ -138,7 +147,7 @@ class MainActivity : Activity() {
         setContentView(webView)
         registerAppReceiver()
         ContextCompat.startForegroundService(this, Intent(this, LanShareService::class.java))
-        webView.loadUrl("file:///android_asset/linklane/lan-android.html")
+        webView.loadUrl("https://appassets.androidplatform.net/assets/linklane/lan-android.html")
     }
 
     private fun registerAppReceiver() {
