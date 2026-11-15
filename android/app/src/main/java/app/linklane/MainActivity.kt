@@ -179,11 +179,13 @@ class MainActivity : Activity() {
         ?.use { if (it.moveToFirst()) it.getString(0) else null }
 
     private fun accept(token: String, name: String) {
-        val service = File(cacheDir, "incoming-$token.part")
         val destination = File(getExternalFilesDir(null), name.replace(Regex("[/\\\\]"), "_"))
-        // The service owns the staged file. Copy through its private staging location.
-        val staged = File(cacheDir, "incoming-$token.part")
-        if (staged.exists()) {
+        // Incoming payloads remain private until this explicit approval action.
+        val staged = sequenceOf(
+            File(cacheDir, "incoming-$token.part"),
+            File(cacheDir, "incoming-$token.txt")
+        ).firstOrNull { it.exists() }
+        if (staged != null) {
             runCatching { staged.copyTo(destination, overwrite = false); staged.delete() }
                 .onSuccess { status.text = "Saved to app files: ${destination.name}" }
                 .onFailure { status.text = "Could not save: ${it.message}" }
