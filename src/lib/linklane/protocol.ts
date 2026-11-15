@@ -102,3 +102,33 @@ export const CHUNK_BYTES = 48 * 1024;
 export const MAX_FILES = 12;
 export const MAX_NOTE = 4000;
 export const MAX_TRANSFER_BYTES = 1_500_000_000;
+
+
+/**
+ * Reassemble a received file only when every expected chunk is present and
+ * the final byte count exactly matches the advertised size. A completion
+ * control packet is not proof that the payload arrived intact.
+ */
+export function assembleVerifiedFile(
+  meta: FileMeta,
+  chunks: ReadonlyMap<number, Uint8Array>,
+): Uint8Array {
+  if (!Number.isSafeInteger(meta.size) || meta.size < 0 || meta.size > MAX_TRANSFER_BYTES) {
+    throw new Error("Invalid advertised file size.");
+  }
+  const expectedCount = Math.ceil(meta.size / CHUNK_BYTES);
+  if (chunks.size !== expectedCount) throw new Error("File is incomplete: missing or extra chunks.");
+
+  const output = new Uint8Array(meta.size);
+  let offset = 0;
+  for (let seq = 0; seq < expectedCount; seq += 1) {
+    const part = chunks.get(seq);
+    if (!part) throw new Error("File is incomplete: missing chunk.");
+    const expectedLength = Math.min(CHUNK_BYTES, meta.size - offset);
+    if (part.byteLength !== expectedLength) throw new Error("File chunk has an invalid length.");
+    output.set(part, offset);
+    offset += part.byteLength;
+  }
+  if (offset !== meta.size) throw new Error("Received file size does not match its metadata.");
+  return output;
+}
