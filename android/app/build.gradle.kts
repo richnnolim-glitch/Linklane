@@ -24,6 +24,7 @@ android {
 
 dependencies {
     implementation("androidx.core:core-ktx:1.16.0")
+    implementation("androidx.webkit:webkit:1.13.0")
 }
 
 val buildLinklaneUi by tasks.registering(Exec::class) {
